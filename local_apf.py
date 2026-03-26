@@ -8,8 +8,8 @@ from gpiozero import DistanceSensor
 print("[*] 初始化超声波传感器...")
 try:
     # 距离限制设为 2.0 米，超过这个距离视为安全
-    sonar_left = DistanceSensor(echo=24, trig=23, max_distance=2.0)
-    sonar_right = DistanceSensor(echo=27, trig=17, max_distance=2.0)
+    sonar_left = DistanceSensor(echo=24, trigger=23, max_distance=2.0)
+    sonar_right = DistanceSensor(echo=27, trigger=17, max_distance=2.0)
 except Exception as e:
     print(f"[!] 传感器初始化失败，请检查接线和权限: {e}")
     exit(1)
