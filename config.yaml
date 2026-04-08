@@ -13,8 +13,7 @@ apf:
 
 # Sensor ports and settings
 hardware:
-  uwb_left_port: '/dev/ttyUSB0'
-  uwb_right_port: '/dev/ttyUSB1'
+  uwb_port: '/dev/ttyUSB0'  # Port of the ESP32
   uwb_baudrate: 115200
   sonar_left_trig: 23
   sonar_left_echo: 24

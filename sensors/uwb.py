@@ -4,45 +4,38 @@ import time
 
 class DualUWBManager:
     def __init__(self, config):
-        """Initialize the dual UWB serial connections and start background threads for reading data"""
-        print("[*] Initializing dual UWB serial connections...")
-        self.dl = 2.0 # Default left distance
-        self.dr = 2.0 # Default right distance
+        """Initialize double uwb with a single esp32"""
+        print("[*] 初始化 UWB 串口通信...")
+        self.dl = 2.0 
+        self.dr = 2.0 
         
+        self.port = config['hardware']['uwb_port']
         self.baudrate = config['hardware']['uwb_baudrate']
-        self.port_left = config['hardware']['uwb_left_port']
-        self.port_right = config['hardware']['uwb_right_port']
         
-        self.ser_left = self._open_serial(self.port_left)
-        self.ser_right = self._open_serial(self.port_right)
-        
-        # Launch background threads to continuously read from the UWB serial ports
-        threading.Thread(target=self._read_loop, args=(self.ser_left, True), daemon=True).start()
-        threading.Thread(target=self._read_loop, args=(self.ser_right, False), daemon=True).start()
-
-    def _open_serial(self, port):
         try:
-            return serial.Serial(port, self.baudrate, timeout=0.1)
+            self.ser = serial.Serial(self.port, self.baudrate, timeout=0.1)
+            # Single-thread reading
+            threading.Thread(target=self._read_loop, daemon=True).start()
         except Exception as e:
-            print(f"[!] Warning: Unable to open UWB serial port {port} - {e}")
-            return None
+            print(f"[!] Failed to open port {self.port} - {e}")
+            self.ser = None
 
-    def _read_loop(self, ser, is_left):
-        """Background thread function for polling serial data"""
+    def _read_loop(self):
+        """Process L/R data in turn"""
         while True:
-            if ser and ser.in_waiting:
+            if self.ser and self.ser.in_waiting:
                 try:
-                    line = ser.readline().decode('utf-8').strip()
-                    if line.startswith("UWB:"):
+                    line = self.ser.readline().decode('utf-8').strip()
+                    # 分流判断
+                    if line.startswith("UWB_L:"):
                         dist_m = float(line.split(":")[1]) / 100.0
-                        if is_left:
-                            self.dl = dist_m
-                        else:
-                            self.dr = dist_m
+                        self.dl = dist_m
+                    elif line.startswith("UWB_R:"):
+                        dist_m = float(line.split(":")[1]) / 100.0
+                        self.dr = dist_m
                 except Exception:
                     pass
             time.sleep(0.01)
 
     def get_distances(self):
-        """Return the latest parsed left and right UWB distances (unit: meters)"""
         return self.dl, self.dr
