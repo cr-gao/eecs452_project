@@ -5,7 +5,7 @@ import time
 class DualUWBManager:
     def __init__(self, config):
         """Initialize double uwb with a single esp32"""
-        print("[*] 初始化 UWB 串口通信...")
+        print("[*] Initializing UWB ports...")
         self.dl = 2.0 
         self.dr = 2.0 
         
