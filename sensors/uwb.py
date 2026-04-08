@@ -21,19 +21,34 @@ class DualUWBManager:
             self.ser = None
 
     def _read_loop(self):
-        """Process L/R data in turn"""
+        """Background loop to parse L and R data from a single serial port"""
         while True:
             if self.ser and self.ser.in_waiting:
                 try:
+                    # Read a line of data, such as "Anchor2 received: +ANCHOR_RCV=TAG, 0,, 16cm, -52"
                     line = self.ser.readline().decode('utf-8').strip()
-                    # 分流判断
-                    if line.startswith("UWB_L:"):
-                        dist_m = float(line.split(":")[1]) / 100.0
-                        self.dl = dist_m
-                    elif line.startswith("UWB_R:"):
-                        dist_m = float(line.split(":")[1]) / 100.0
-                        self.dr = dist_m
-                except Exception:
+                    
+                    # Make sure the line contains the expected pattern before parsing
+                    if "+ANCHOR_RCV=" in line:
+                        # Split the line by commas, which should give us parts like ['Anchor2 received: +ANCHOR_RCV=TAG', ' 0', '', ' 16cm', ' -52']
+                        parts = line.split(',')
+                        
+                        if len(parts) >= 4:
+                            # Extract the part containing 'cm', e.g., ' 16cm'
+                            dist_str = parts[3]
+                            # Remove 'cm' and whitespace, keeping only the numeric value '16'
+                            dist_cm_clean = dist_str.replace('cm', '').strip()
+                            
+                            if dist_cm_clean.isdigit(): # Make sure it's a valid number before converting
+                                dist_m = float(dist_cm_clean) / 100.0 # Convert to meters
+                                
+                                # Determine if it's Anchor1 (left) or Anchor2 (right)
+                                if "Anchor1" in line:
+                                    self.dl = dist_m
+                                elif "Anchor2" in line:
+                                    self.dr = dist_m
+                except Exception as e:
+                    # Ignore parsing errors (e.g., serial port noise)
                     pass
             time.sleep(0.01)
 
