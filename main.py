@@ -22,6 +22,8 @@ def main():
     # 1. Load configuration
     config = load_config()
 
+    STOP_THRESHOLD = 0.5
+
     # 2. Initialize hardware interfaces and control modules
     sonar = SonarArray(config)
     uwb = DualUWBManager(config)
@@ -38,6 +40,22 @@ def main():
             # --- A. Read sensor data ---
             sonar_dl, sonar_dr = sonar.get_distances()
             uwb_dl, uwb_dr = uwb.get_distances()
+
+            # Emergency stop check
+            # Find the minimum distance from all sensors
+            min_dist = min(sonar_dl, sonar_dr, uwb_dl, uwb_dr)
+
+            if min_dist <= STOP_THRESHOLD:
+                print(f"[Emergency stop triggered, min distance] {min_dist:.2f}m <= {STOP_THRESHOLD}m, stopping robot!")
+
+                # Send zero velocity command to stop the robot immediately
+                chassis.send_cmd_vel(0, 0)
+
+                # Sleep for a short duration to prevent spamming the stop command and allow the robot to come to a halt
+                elapsed = time.time() - loop_start
+                sleep_time = max(0.1 - elapsed, 0)
+                time.sleep(sleep_time)
+                continue
 
             # --- B. Compute motion commands ---
             v, w, tgt_x, tgt_y = planner.compute_command(uwb_dl, uwb_dr, sonar_dl, sonar_dr)
