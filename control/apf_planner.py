@@ -11,7 +11,7 @@ class APFPlanner:
         self.vortex_weight = config['apf']['vortex_weight']
         self.kp_w = config['apf']['kp_w']
 
-    def compute_command(self, uwb_dl, uwb_dr, sonar_dl, sonar_dr):
+    def compute_command(self, uwb_dl, uwb_dr, sonar_dl, sonar_dm, sonar_dr):
         """Input sensor data and output the desired linear and angular velocities"""
         
         # --- 1. Calculate local repulsion and vortex forces ---
@@ -21,7 +21,12 @@ class APFPlanner:
             rep_mag = self.k_rep * (1.0/sonar_dl - 1.0/self.safe_radius) / (sonar_dl**2)
             F_local_y -= rep_mag
             F_local_x += rep_mag * self.vortex_weight
-            
+
+        # Middle sensor: pure rearward (−x) repulsion with no lateral vortex component
+        if sonar_dm < self.safe_radius:
+            rep_mag = self.k_rep * (1.0/sonar_dm - 1.0/self.safe_radius) / (sonar_dm**2)
+            F_local_x -= rep_mag
+
         if sonar_dr < self.safe_radius:
             rep_mag = self.k_rep * (1.0/sonar_dr - 1.0/self.safe_radius) / (sonar_dr**2)
             F_local_y += rep_mag

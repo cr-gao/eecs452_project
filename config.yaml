@@ -5,7 +5,7 @@ robot:
 
 # APF Parameters
 apf:
-  safe_radius: 0.4    # Safe radius for obstacle avoidance (meters)
+  safe_radius: 0.2    # Safe radius for obstacle avoidance (meters)
   k_att: 1.2          # Attraction coefficient
   k_rep: 0.8          # Repulsion coefficient
   vortex_weight: 0.6  # Vortex force weight (turning amplitude)
@@ -17,5 +17,8 @@ hardware:
   uwb_baudrate: 115200
   sonar_left_trig: 23
   sonar_left_echo: 24
+  sonar_mid_trig: 20
+  sonar_mid_echo: 21
   sonar_right_trig: 17
   sonar_right_echo: 27
+  sonar_moving_avg_window: 5

@@ -38,12 +38,12 @@ def main():
             loop_start = time.time()
 
             # --- A. Read sensor data ---
-            sonar_dl, sonar_dr = sonar.get_distances()
+            sonar_dl, sonar_dm, sonar_dr = sonar.get_distances()
             uwb_dl, uwb_dr = uwb.get_distances()
 
             # Emergency stop check
             # Find the minimum distance from all sensors
-            min_dist = min(sonar_dl, sonar_dr, uwb_dl, uwb_dr)
+            min_dist = min(sonar_dl, sonar_dm, sonar_dr, uwb_dl, uwb_dr)
 
             if min_dist <= STOP_THRESHOLD:
                 print(f"[Emergency stop triggered, min distance] {min_dist:.2f}m <= {STOP_THRESHOLD}m, stopping robot!")
@@ -58,13 +58,13 @@ def main():
                 continue
 
             # --- B. Compute motion commands ---
-            v, w, tgt_x, tgt_y = planner.compute_command(uwb_dl, uwb_dr, sonar_dl, sonar_dr)
+            v, w, tgt_x, tgt_y = planner.compute_command(uwb_dl, uwb_dr, sonar_dl, sonar_dm, sonar_dr)
 
             # --- C. Execute motion ---
             chassis.send_cmd_vel(v, w)
 
             # --- D. Terminal monitoring ---
-            print(f"[Monitoring] UWB_L:{uwb_dl:.2f}m R:{uwb_dr:.2f}m | Target:(x:{tgt_x:.2f}, y:{tgt_y:.2f}) | Obstacle_L:{sonar_dl:.2f}m R:{sonar_dr:.2f}m")
+            print(f"[Monitoring] UWB_L:{uwb_dl:.2f}m R:{uwb_dr:.2f}m | Target:(x:{tgt_x:.2f}, y:{tgt_y:.2f}) | Obstacle_L:{sonar_dl:.2f}m M:{sonar_dm:.2f}m R:{sonar_dr:.2f}m")
 
             # --- E. Loop frequency control ---
             elapsed = time.time() - loop_start
