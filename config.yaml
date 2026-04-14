@@ -10,6 +10,7 @@ apf:
   k_rep: 0.8          # Repulsion coefficient
   vortex_weight: 0.6  # Vortex force weight (turning amplitude)
   kp_w: 2.0           # Steering P-control coefficient
+  spin_threshold_deg: 40  # Spin in place if target angle exceeds this (degrees)
 
 # Sensor ports and settings
 hardware:
