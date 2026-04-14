@@ -1,11 +1,11 @@
 # Robot configuration parameters
 robot:
-  uwb_baseline: 0.4   # 左右UWB基站间距 (米)
+  uwb_baseline: 0.6   # 左右UWB基站间距 (米)
   max_v: 1.0          # 最大线速度 (m/s)
 
 # APF Parameters
 apf:
-  safe_radius: 0.6    # Safe radius for obstacle avoidance (meters)
+  safe_radius: 0.4    # Safe radius for obstacle avoidance (meters)
   k_att: 1.2          # Attraction coefficient
   k_rep: 0.8          # Repulsion coefficient
   vortex_weight: 0.6  # Vortex force weight (turning amplitude)
