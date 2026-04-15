@@ -127,4 +127,12 @@ class APFPlanner:
             else:
                 v = self.max_v * angle_penalty
 
-        return v, w, F_total_x, F_total_y, target_x, target_y
+        force_info = {
+            'F_att'   : (F_att_x,   F_att_y),
+            'F_rep_l' : (F_rep_x, F_rep_y),  # 左侧超声波斥力
+            'F_rep_m' : (F_rep_x, F_rep_y),  # 中间超声波斥力
+            'F_rep_r' : (F_rep_x, F_rep_y),  # 右侧超声波斥力
+            'F_total' : (F_total_x, F_total_y),
+        }
+
+        return v, w, target_x, target_y, force_info
