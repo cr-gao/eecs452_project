@@ -230,9 +230,12 @@ def main():
             v, w, tgt_x, tgt_y, force_info = planner.compute_command(
                 uwb_dl, uwb_dr, sonar_dl, sonar_dm, sonar_dr
             )
+
+            if min(uwb_dl, uwb_dr) < 0.5:
+                v *= 0.5  # UWB 距离过近时减速，增加稳定性
  
             # ── 紧急停车 ──
-            min_dist = min(sonar_dl, sonar_dm, sonar_dr, uwb_dl, uwb_dr)
+            min_dist = min(sonar_dl, sonar_dm, sonar_dr)
             # ── C. 执行运动（急停时 v 强制为 0，只保留 w 原地转向） ──
             if min_dist <= STOP_THRESHOLD:
                 # 立即停住平移，但继续用 APF 合力角度来原地转向
@@ -241,9 +244,6 @@ def main():
                 print(f"[Obstacle] min_dist={min_dist:.2f}m — rotating in place, w={w:.2f}")
             else:
                 chassis.send_cmd_vel(v, w)
- 
-            # ── C. 执行运动 ──
-            chassis.send_cmd_vel(v, w)
  
             # ── D. 仿真位姿积分 ──
             sim_theta += w * DT
@@ -259,6 +259,7 @@ def main():
             tgt_gy = sim_y + tgt_x*math.sin(sim_theta) + tgt_y*math.cos(sim_theta)
  
             # ── E. 可视化更新 ──
+            '''
             draw_local_frame(ax_local, tgt_x, tgt_y, force_info,
                              sonar_dl, sonar_dm, sonar_dr,
                              config['apf']['safe_radius'])
@@ -277,6 +278,7 @@ def main():
                 f"F_tot({ft[0]:.2f},{ft[1]:.2f}) | "
                 f"v={v:.2f} w={w:.2f}"
             )
+            '''
  
             # ── G. 频率控制 ~10Hz ──
             time.sleep(max(DT - (time.time() - loop_start), 0))
