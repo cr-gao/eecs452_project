@@ -47,11 +47,19 @@ class APFPlanner:
             F_rep_l = (fx, fy)
             F_local_x += fx; F_local_y += fy
 
+        # --- 中间超声波 (sonar_dm) ---
         if sonar_dm < self.safe_radius:
+            # 1. 计算基础斥力大小
             rep_mag = self.k_rep * (1.0/sonar_dm - 1.0/self.safe_radius) / (sonar_dm**2)
-            # 增加一个侧向的涡旋力，迫使小车向某一侧转弯 (比如向右)
-            F_rep_m = (-rep_mag, rep_mag * self.vortex_weight) 
-            F_local_x -= rep_mag; F_local_y += rep_mag * self.vortex_weight  # 打破平衡！
+            
+            # 2. [核心修改] 动态获取目标的侧向方位
+            # 如果 target_y >= 0 (目标在小车左侧或正前)，侧向推力向左 (+Y)
+            # 如果 target_y < 0  (目标在小车右侧)，侧向推力向右 (-Y)
+            direction = 1.0 if target_y >= 0 else -1.0
+            
+            # 3. 施加受力
+            F_local_x -= rep_mag  # 阻力依然向后
+            F_local_y += rep_mag * self.vortex_weight * direction # 动态侧向推力
 
         if sonar_dr < self.safe_radius:
             rep_mag = self.k_rep * (1.0/sonar_dr - 1.0/self.safe_radius) / (sonar_dr**2)
