@@ -33,60 +33,48 @@ class APFPlanner:
                 'F_total' : (fx, fy),
             }
         """
-
-        # --- 1. Repulsion + vortex forces ---
-        F_rep_l = (0.0, 0.0)
-        F_rep_m = (0.0, 0.0)
-        F_rep_r = (0.0, 0.0)
-        F_local_x, F_local_y = 0.0, 0.0
-
-        if sonar_dl < self.safe_radius:
-            rep_mag = self.k_rep * (1.0/sonar_dl - 1.0/self.safe_radius) / (sonar_dl**2)
-            fx =  rep_mag * self.vortex_weight
-            fy = -rep_mag
-            F_rep_l = (fx, fy)
-            F_local_x += fx; F_local_y += fy
-
-        # --- 中间超声波 (sonar_dm) ---
-        if sonar_dm < self.safe_radius:
-            # 1. 计算基础斥力大小
-            rep_mag = self.k_rep * (1.0/sonar_dm - 1.0/self.safe_radius) / (sonar_dm**2)
-            
-            # 2. [核心修改] 动态获取目标的侧向方位
-            # 如果 target_y >= 0 (目标在小车左侧或正前)，侧向推力向左 (+Y)
-            # 如果 target_y < 0  (目标在小车右侧)，侧向推力向右 (-Y)
-            direction = 1.0 if target_y >= 0 else -1.0
-            
-            # 3. 施加受力
-            F_local_x -= rep_mag  # 阻力依然向后
-            F_local_y += rep_mag * self.vortex_weight * direction # 动态侧向推力
-
-        if sonar_dr < self.safe_radius:
-            rep_mag = self.k_rep * (1.0/sonar_dr - 1.0/self.safe_radius) / (sonar_dr**2)
-            fx =  rep_mag * self.vortex_weight
-            fy =  rep_mag
-            F_rep_r = (fx, fy)
-            F_local_x += fx; F_local_y += fy
-
-        # --- 2. Target position (robot-local frame) from UWB geometry ---
-        # 在计算 target_y 之前加入限幅
+        # --- 1. Target position (robot-local frame) from UWB geometry ---
         diff = uwb_dr - uwb_dl
-        diff = max(min(diff, self.L * 0.99), -self.L * 0.99) # 留一点余量防止除零或负数
-        uwb_dr = uwb_dl + diff
-        target_y = (uwb_dr**2 - uwb_dl**2) / (2 * self.L)
+        diff = max(min(diff, self.L * 0.99), -self.L * 0.99)
+        uwb_dr_adj = uwb_dl + diff
+        
+        target_y = (uwb_dr_adj**2 - uwb_dl**2) / (2 * self.L)
         val_for_sqrt = uwb_dl**2 - (target_y - self.L/2)**2
         target_x = math.sqrt(max(val_for_sqrt, 0.001))
+        
         dist_target = math.hypot(target_x, target_y)
 
-        if dist_target > 0.2:
-            F_att_x = self.k_att * (target_x / dist_target)
-            F_att_y = self.k_att * (target_y / dist_target)
-        else:
-            F_att_x, F_att_y = 0.0, 0.0
+        # 基于刚算出的 target_x 和 target_y
+        F_att_x = self.k_att * target_x
+        F_att_y = self.k_att * target_y
+
+        # 2. repulsion forces from sonar (in robot-local frame)
+        F_rep_x = 0.0
+        F_rep_y = 0.0
+
+        # 左超声波
+        if sonar_dl < self.safe_radius:
+            rep_mag = self.k_rep * (1.0/sonar_dl - 1.0/self.safe_radius) / (sonar_dl**2)
+            F_rep_x -= rep_mag
+            F_rep_y -= rep_mag * self.vortex_weight # 左边有障碍，往右推 (-Y)
+
+        # 右超声波
+        if sonar_dr < self.safe_radius:
+            rep_mag = self.k_rep * (1.0/sonar_dr - 1.0/self.safe_radius) / (sonar_dr**2)
+            F_rep_x -= rep_mag
+            F_rep_y += rep_mag * self.vortex_weight # 右边有障碍，往左推 (+Y)
+
+        # 中间超声波 (结合 target_y 实现智能分流！)
+        if sonar_dm < self.safe_radius:
+            rep_mag = self.k_rep * (1.0/sonar_dm - 1.0/self.safe_radius) / (sonar_dm**2)
+            direction = 1.0 if target_y >= 0 else -1.0
+            
+            F_rep_x -= rep_mag
+            F_rep_y += rep_mag * self.vortex_weight * direction
 
         # --- 3. Total force ---
-        F_total_x = F_att_x + F_local_x
-        F_total_y = F_att_y + F_local_y
+        F_total_x = F_att_x + F_rep_x
+        F_total_y = F_att_y + F_rep_y
 
         # --- 4. Velocity commands ---
         # 抢救逻辑触发判断：
@@ -126,9 +114,9 @@ class APFPlanner:
 
         force_info = {
             'F_att'   : (F_att_x,   F_att_y),
-            'F_rep_l' : F_rep_l,
-            'F_rep_m' : F_rep_m,
-            'F_rep_r' : F_rep_r,
+            'F_rep_l' : (F_rep_x, F_rep_y),  # 左侧超声波斥力
+            'F_rep_m' : (F_rep_x, F_rep_y),  # 中间超声波斥力
+            'F_rep_r' : (F_rep_x, F_rep_y),  # 右侧超声波斥力
             'F_total' : (F_total_x, F_total_y),
         }
 
