@@ -1,81 +1,290 @@
 import time
+import math
 import yaml
 import sys
+import matplotlib
+matplotlib.use('TkAgg')          # 使用 TkAgg 后端；如在无头环境可改成 'Agg'
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyArrowPatch
+ 
 from sensors.sonar import SonarArray
 from sensors.uwb import DualUWBManager
 from control.apf_planner import APFPlanner
 from hardware.motor_driver import MotorController
-
+ 
+ 
+# ─────────────────────────────────────────────
+#  配置加载
+# ─────────────────────────────────────────────
 def load_config(path="config.yaml"):
     try:
-        with open(path, 'r') as file:
-            return yaml.safe_load(file)
+        with open(path, 'r') as f:
+            return yaml.safe_load(f)
     except Exception as e:
-        print(f"[!] Failed to load config file: {e}")
+        print(f"[!] Failed to load config: {e}")
         sys.exit(1)
-
+ 
+ 
+# ─────────────────────────────────────────────
+#  可视化辅助：在 local-frame 图上画受力
+# ─────────────────────────────────────────────
+ARROW_SCALE = 0.5          # 力向量长度缩放（视觉）
+SONAR_POSITIONS = {        # 三个超声波在机器人 local 坐标系中的安装位置 (x, y)
+    'left':   (0.15,  0.15),
+    'mid':    (0.20,  0.00),
+    'right':  (0.15, -0.15),
+}
+ 
+def _draw_arrow(ax, x, y, dx, dy, color, label=None, lw=2, alpha=0.9):
+    """画一条从 (x,y) 出发的力向量箭头。"""
+    if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+        return
+    ax.annotate(
+        "", xy=(x + dx * ARROW_SCALE, y + dy * ARROW_SCALE), xytext=(x, y),
+        arrowprops=dict(arrowstyle="-|>", color=color, lw=lw),
+        alpha=alpha, label=label
+    )
+ 
+ 
+def draw_local_frame(ax_local, target_x, target_y, force_info, sonar_dl, sonar_dm, sonar_dr, safe_radius):
+    """
+    左侧子图：机器人局部坐标系视角
+      · 小车永远在原点，朝向 +X 轴
+      · 显示 UWB 解算出的目标点
+      · 显示引力 / 斥力 / 合力箭头
+      · 用扇形示意每个超声波的障碍距离
+    """
+    ax_local.cla()
+    ax_local.set_aspect('equal')
+    ax_local.set_xlim(-0.5, 3.5)
+    ax_local.set_ylim(-2.0, 2.0)
+    ax_local.set_facecolor('#0d1117')
+    ax_local.tick_params(colors='#8b949e')
+    for spine in ax_local.spines.values():
+        spine.set_edgecolor('#30363d')
+    ax_local.set_title("Robot Local Frame  (APF Forces)", color='#e6edf3', fontsize=10, pad=6)
+    ax_local.set_xlabel("X forward (m)", color='#8b949e', fontsize=8)
+    ax_local.set_ylabel("Y left (m)",    color='#8b949e', fontsize=8)
+    ax_local.axhline(0, color='#30363d', lw=0.8)
+    ax_local.axvline(0, color='#30363d', lw=0.8)
+    ax_local.grid(True, color='#21262d', lw=0.5)
+ 
+    # ── 机器人本体 ──
+    robot_body = plt.Circle((0, 0), 0.18, color='#238636', zorder=5)
+    ax_local.add_patch(robot_body)
+    ax_local.annotate("", xy=(0.35, 0), xytext=(0, 0),
+                      arrowprops=dict(arrowstyle="-|>", color='#f0f6fc', lw=2), zorder=6)
+ 
+    # ── 超声波障碍圆弧（用圆表示探测到的障碍距离） ──
+    sonar_colors = {'left': '#f85149', 'mid': '#ff7b72', 'right': '#f85149'}
+    sonar_dists  = {'left': sonar_dl,  'mid': sonar_dm,  'right': sonar_dr}
+    for name, (sx, sy) in SONAR_POSITIONS.items():
+        d = sonar_dists[name]
+        color = sonar_colors[name]
+        alpha = 0.7 if d < safe_radius else 0.2
+        # 画一个小圆表示障碍物位置
+        obs_x = sx + d
+        obs_circle = plt.Circle((obs_x, sy), 0.06, color=color, alpha=alpha, zorder=4)
+        ax_local.add_patch(obs_circle)
+        # 虚线从传感器到障碍
+        ax_local.plot([sx, obs_x], [sy, sy], '--', color=color, alpha=alpha * 0.8, lw=1.0)
+        # 超声波安装点
+        ax_local.plot(sx, sy, 'o', color=color, markersize=4, alpha=0.9, zorder=5)
+ 
+    # ── 目标点（UWB 解算） ──
+    ax_local.plot(target_x, target_y, '*', color='#f0a500', markersize=14,
+                  zorder=7, label=f'UWB Target ({target_x:.2f}, {target_y:.2f})')
+ 
+    # ── 力向量 ──
+    origin = (0.0, 0.0)
+    # 引力（绿色）
+    _draw_arrow(ax_local, *origin, *force_info['F_att'],   color='#3fb950', lw=2.5)
+    # 斥力：左、中、右（红色系）
+    _draw_arrow(ax_local, *SONAR_POSITIONS['left'],  *force_info['F_rep_l'], color='#f85149', lw=1.8)
+    _draw_arrow(ax_local, *SONAR_POSITIONS['mid'],   *force_info['F_rep_m'], color='#ff7b72', lw=1.8)
+    _draw_arrow(ax_local, *SONAR_POSITIONS['right'], *force_info['F_rep_r'], color='#f85149', lw=1.8)
+    # 合力（白色、最粗）
+    _draw_arrow(ax_local, *origin, *force_info['F_total'],  color='#f0f6fc', lw=3.0)
+ 
+    # ── 图例 ──
+    legend_patches = [
+        mpatches.Patch(color='#3fb950', label='Attraction (F_att)'),
+        mpatches.Patch(color='#f85149', label='Repulsion (F_rep)'),
+        mpatches.Patch(color='#f0f6fc', label='Total force (F_total)'),
+        mpatches.Patch(color='#f0a500', label='UWB Target'),
+    ]
+    ax_local.legend(handles=legend_patches, loc='upper right',
+                    fontsize=7, facecolor='#161b22', edgecolor='#30363d',
+                    labelcolor='#c9d1d9')
+ 
+ 
+def draw_global_map(ax_global, robot_x, robot_y, robot_theta,
+                    path_x, path_y, target_gx, target_gy,
+                    v, w, force_info):
+    """
+    右侧子图：全局地图
+      · 小车轨迹
+      · 当前位置 + 朝向箭头
+      · UWB 目标（全局坐标）
+      · 合力方向（转到全局系后）
+    """
+    ax_global.cla()
+    ax_global.set_aspect('equal')
+    view = 4.0
+    ax_global.set_xlim(robot_x - view, robot_x + view)
+    ax_global.set_ylim(robot_y - view, robot_y + view)
+    ax_global.set_facecolor('#0d1117')
+    ax_global.tick_params(colors='#8b949e')
+    for spine in ax_global.spines.values():
+        spine.set_edgecolor('#30363d')
+    ax_global.set_title("Global Map  (Robot Trajectory)", color='#e6edf3', fontsize=10, pad=6)
+    ax_global.set_xlabel("X (m)", color='#8b949e', fontsize=8)
+    ax_global.set_ylabel("Y (m)", color='#8b949e', fontsize=8)
+    ax_global.grid(True, color='#21262d', lw=0.5)
+ 
+    # ── 轨迹 ──
+    if len(path_x) > 1:
+        ax_global.plot(path_x, path_y, '-', color='#1f6feb', alpha=0.5, lw=1.5, label='Path')
+ 
+    # ── 目标点 ──
+    ax_global.plot(target_gx, target_gy, '*', color='#f0a500', markersize=14,
+                   zorder=7, label='UWB Target')
+    # 目标轨迹（淡）
+    ax_global.plot(target_gx, target_gy, 'o', color='#f0a500',
+                   alpha=0.2, markersize=6, zorder=3)
+ 
+    # ── 机器人 ──
+    robot_circle = plt.Circle((robot_x, robot_y), 0.18, color='#238636', zorder=5)
+    ax_global.add_patch(robot_circle)
+    ax_global.annotate(
+        "", xy=(robot_x + 0.4*math.cos(robot_theta),
+                robot_y + 0.4*math.sin(robot_theta)),
+        xytext=(robot_x, robot_y),
+        arrowprops=dict(arrowstyle="-|>", color='#f0f6fc', lw=2), zorder=6
+    )
+ 
+    # ── 合力方向（全局系） ──
+    ftx, fty = force_info['F_total']
+    ftx_g = ftx * math.cos(robot_theta) - fty * math.sin(robot_theta)
+    fty_g = ftx * math.sin(robot_theta) + fty * math.cos(robot_theta)
+    _draw_arrow(ax_global, robot_x, robot_y, ftx_g, fty_g, color='#f0f6fc', lw=2.5)
+ 
+    # ── 状态文字 ──
+    status = (f"v = {v:+.2f} m/s   w = {w:+.2f} rad/s\n"
+              f"θ = {math.degrees(robot_theta):+.1f}°   "
+              f"pos = ({robot_x:.2f}, {robot_y:.2f})")
+    ax_global.text(robot_x - view + 0.15, robot_y + view - 0.25, status,
+                   color='#c9d1d9', fontsize=8, family='monospace',
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='#161b22',
+                             edgecolor='#30363d', alpha=0.85))
+ 
+    ax_global.legend(loc='lower right', fontsize=7,
+                     facecolor='#161b22', edgecolor='#30363d', labelcolor='#c9d1d9')
+ 
+ 
+# ─────────────────────────────────────────────
+#  主程序
+# ─────────────────────────────────────────────
 def main():
-    print("="*45)
-    print("Launching APF-Based UWB Follow Robot System")
-    print("="*45)
-
-    # 1. Load configuration
+    print("=" * 50)
+    print("  APF-Based UWB Follow Robot  (with Sim View)")
+    print("=" * 50)
+ 
     config = load_config()
-
     STOP_THRESHOLD = 0.5
-
-    # 2. Initialize hardware interfaces and control modules
-    sonar = SonarArray(config)
-    uwb = DualUWBManager(config)
+    DT = 0.1
+ 
+    # ── 初始化模块 ──
+    sonar   = SonarArray(config)
+    uwb     = DualUWBManager(config)
     planner = APFPlanner(config)
     chassis = MotorController()
-
-    print("\n[*] Entering main control loop... (Press Ctrl+C to exit)\n")
-    
-    # 3. Main control loop (target frequency ~10Hz)
+ 
+    # ── 虚拟位姿（仿真积分用） ──
+    sim_x, sim_y, sim_theta = 0.0, 0.0, 0.0
+    path_x, path_y = [0.0], [0.0]
+    PATH_MAX = 300
+ 
+    # ── 建立 matplotlib 窗口 ──
+    plt.style.use('dark_background')
+    fig, (ax_local, ax_global) = plt.subplots(1, 2, figsize=(14, 6))
+    fig.patch.set_facecolor('#0d1117')
+    fig.suptitle("UWB Follow Robot — APF Visualizer", color='#e6edf3',
+                 fontsize=13, fontweight='bold', y=0.98)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.ion()
+    plt.show()
+ 
+    print("\n[*] Entering main control loop... (Ctrl+C to exit)\n")
+ 
     try:
         while True:
             loop_start = time.time()
-
-            # --- A. Read sensor data ---
+ 
+            # ── A. 读传感器 ──
             sonar_dl, sonar_dm, sonar_dr = sonar.get_distances()
             uwb_dl, uwb_dr = uwb.get_distances()
-
-            # Emergency stop check
-            # Find the minimum distance from all sensors
+ 
+            # ── 紧急停车 ──
             min_dist = min(sonar_dl, sonar_dm, sonar_dr, uwb_dl, uwb_dr)
-
             if min_dist <= STOP_THRESHOLD:
-                print(f"[Emergency stop triggered, min distance] {min_dist:.2f}m <= {STOP_THRESHOLD}m, stopping robot!")
-
-                # Send zero velocity command to stop the robot immediately
+                print(f"[Emergency stop] min_dist={min_dist:.2f}m")
                 chassis.send_cmd_vel(0, 0)
-
-                # Sleep for a short duration to prevent spamming the stop command and allow the robot to come to a halt
-                elapsed = time.time() - loop_start
-                sleep_time = max(0.1 - elapsed, 0)
-                time.sleep(sleep_time)
+                time.sleep(max(DT - (time.time() - loop_start), 0))
                 continue
-
-            # --- B. Compute motion commands ---
-            v, w, tgt_x, tgt_y = planner.compute_command(uwb_dl, uwb_dr, sonar_dl, sonar_dm, sonar_dr)
-
-            # --- C. Execute motion ---
+ 
+            # ── B. APF 规划（返回受力信息） ──
+            v, w, tgt_x, tgt_y, force_info = planner.compute_command(
+                uwb_dl, uwb_dr, sonar_dl, sonar_dm, sonar_dr
+            )
+ 
+            # ── C. 执行运动 ──
             chassis.send_cmd_vel(v, w)
-
-            # --- D. Terminal monitoring ---
-            print(f"[Monitoring] UWB_L:{uwb_dl:.2f}m R:{uwb_dr:.2f}m | Target:(x:{tgt_x:.2f}, y:{tgt_y:.2f}) | Obstacle_L:{sonar_dl:.2f}m M:{sonar_dm:.2f}m R:{sonar_dr:.2f}m")
-
-            # --- E. Loop frequency control ---
-            elapsed = time.time() - loop_start
-            sleep_time = max(0.1 - elapsed, 0)
-            time.sleep(sleep_time)
-
+ 
+            # ── D. 仿真位姿积分 ──
+            sim_theta += w * DT
+            sim_x     += v * math.cos(sim_theta) * DT
+            sim_y     += v * math.sin(sim_theta) * DT
+            path_x.append(sim_x)
+            path_y.append(sim_y)
+            if len(path_x) > PATH_MAX:
+                path_x.pop(0); path_y.pop(0)
+ 
+            # ── 目标点转全局坐标 ──
+            tgt_gx = sim_x + tgt_x*math.cos(sim_theta) - tgt_y*math.sin(sim_theta)
+            tgt_gy = sim_y + tgt_x*math.sin(sim_theta) + tgt_y*math.cos(sim_theta)
+ 
+            # ── E. 可视化更新 ──
+            draw_local_frame(ax_local, tgt_x, tgt_y, force_info,
+                             sonar_dl, sonar_dm, sonar_dr,
+                             config['apf']['safe_radius'])
+            draw_global_map(ax_global, sim_x, sim_y, sim_theta,
+                            path_x, path_y, tgt_gx, tgt_gy,
+                            v, w, force_info)
+            plt.pause(0.001)
+ 
+            # ── F. 终端监控 ──
+            fa  = force_info['F_att']
+            ft  = force_info['F_total']
+            print(
+                f"[Mon] UWB L:{uwb_dl:.2f} R:{uwb_dr:.2f} | "
+                f"Tgt({tgt_x:.2f},{tgt_y:.2f}) | "
+                f"F_att({fa[0]:.2f},{fa[1]:.2f}) "
+                f"F_tot({ft[0]:.2f},{ft[1]:.2f}) | "
+                f"v={v:.2f} w={w:.2f}"
+            )
+ 
+            # ── G. 频率控制 ~10Hz ──
+            time.sleep(max(DT - (time.time() - loop_start), 0))
+ 
     except KeyboardInterrupt:
-        print("\n[*] Interrupt signal received, shutting down system...")
-        # Add any necessary cleanup code here (e.g., stop motors, close serial ports)
+        print("\n[*] Interrupt received — shutting down...")
         chassis.send_cmd_vel(0, 0)
-        print("[*] System has been shut down safely.")
-
+        plt.ioff()
+        plt.close('all')
+        print("[*] System shut down safely.")
+ 
+ 
 if __name__ == "__main__":
     main()
