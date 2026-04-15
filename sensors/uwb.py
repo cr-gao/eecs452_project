@@ -2,6 +2,21 @@ import serial
 import threading
 import time
 
+class MovingAverageFilter:
+    """Simple moving average filter backed by a fixed-size circular buffer."""
+
+    def __init__(self, window_size: int = 5):
+        self._window_size = window_size
+        self._buf = deque(maxlen=window_size)
+
+    def update(self, value: float) -> float:
+        """Push a new raw reading and return the current filtered average."""
+        self._buf.append(value)
+        return sum(self._buf) / len(self._buf)
+
+    def reset(self):
+        self._buf.clear()
+
 class DualUWBManager:
     def __init__(self, config):
         """Initialize double uwb with a single esp32"""
