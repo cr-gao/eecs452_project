@@ -1,7 +1,7 @@
 # Robot configuration parameters
 robot:
   uwb_baseline: 0.6   # 左右UWB基站间距 (米)
-  max_v: 1.0          # 最大线速度 (m/s)
+  max_v: 0.3          # 最大线速度 (m/s)
 
 # APF Parameters
 apf:

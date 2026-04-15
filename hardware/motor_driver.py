@@ -11,7 +11,7 @@ class MotorController:
         self.wheel_base = 0.20  
         # The maximum physical speed of the robot (in m/s) at full PWM (100%)
         # This value is used to map algorithmic speeds to PWM duty cycles, needs to be tuned through real-world testing
-        self.max_physical_speed = 0.3
+        self.max_physical_speed = 1.0
 
         # --- 2. Initialize L298N pins (using BCM numbering, modify according to your actual wiring) ---
         # Left motor: IN1=5, IN2=6, ENA=12
@@ -38,8 +38,8 @@ class MotorController:
 
         # --- Step 3: Clamping to Prevent Errors ---
         # gpiozero requires the duty cycle to be between -1.0 and +1.0, otherwise it will crash
-        pwm_left = max(min(pwm_left, self.max_physical_speed), -1.0 * self.max_physical_speed)
-        pwm_right = max(min(pwm_right, self.max_physical_speed), -1.0 * self.max_physical_speed)
+        pwm_left = max(min(pwm_left, 1.0), -1.0)
+        pwm_right = max(min(pwm_right, 1.0), -1.0)
 
         # --- Step 4: Drive L298N ---
         # Control the left motor

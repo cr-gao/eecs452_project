@@ -14,7 +14,6 @@ class APFPlanner:
         # [新增] PD 控制与抢救逻辑所需的状态变量
         self.kd_w = config['apf'].get('kd_w', 1.5)
         self.prev_error_w = 0.0
-        self.prev_dist_target = 2.0
         self.rescue_turning = False
         self.rescue_frames = 0
 
@@ -34,9 +33,10 @@ class APFPlanner:
             }
         """
         # --- 1. Target position (robot-local frame) from UWB geometry ---
-        diff = uwb_dr - uwb_dl
-        diff = max(min(diff, self.L * 0.99), -self.L * 0.99)
-        uwb_dr_adj = uwb_dl + diff
+        # diff = uwb_dr - uwb_dl
+        # diff = max(min(diff, self.L * 0.99), -self.L * 0.99)
+        # uwb_dr_adj = uwb_dl + diff
+        uwb_dr_adj = uwb_dr  # [简化] 直接用右侧距离，避免测量误差导致的复杂几何计算
         
         target_y = (uwb_dr_adj**2 - uwb_dl**2) / (2 * self.L)
         val_for_sqrt = uwb_dl**2 - (target_y - self.L/2)**2
@@ -77,50 +77,33 @@ class APFPlanner:
         F_total_y = F_att_y + F_rep_y
 
         # --- 4. Velocity commands ---
-        # 抢救逻辑触发判断：
-        # 如果人之前离车很近 (< 0.6m)，并且距离突然开始变大(>0.1m)，
-        # 极大概率是人由于车身延迟已经走到了小车后方（陷入镜像死区）
-        if dist_target > self.prev_dist_target + 0.1 and self.prev_dist_target < 0.6:
-            self.rescue_turning = True
-            self.rescue_frames = 10  # 强制掉头状态持续 10 帧 (约 1 秒)
+        # 正常跟随：引入 PD 转向控制对抗通讯延迟
+        error_w = math.atan2(F_total_y, F_total_x)
 
-        self.prev_dist_target = dist_target
-
-        if self.rescue_turning:
-            # 执行抢救：停住平移，强制大角度原地甩头找人
-            v = 0.0
-            w = 2.0  # 向左猛打方向盘（根据你基站习惯可改为负数）
-            self.rescue_frames -= 1
-            if self.rescue_frames <= 0:
-                self.rescue_turning = False
-        
-        elif dist_target > 0.2:
-            # 正常跟随：引入 PD 转向控制对抗通讯延迟
-            error_w = math.atan2(F_total_y, F_total_x)
-    
-            # 1. 转向优先级逻辑：如果角度偏差大于 30 度 (约 0.5 rad)，大幅削减线速度
-            if abs(error_w) > 0.5:
-                v_scale = 0.1  # 几乎原地转
-            else:
-                v_scale = 1.0  # 正常行驶
-                
-            v = self.max_v * v_scale * max(0.0, (1.0 - abs(error_w)/math.pi))
-            d_error = error_w - self.prev_error_w
-            
-            # 2. 更加激进的 PD 转向 (增加微分项抗过冲)
-            w = (self.kp_w * error_w) + (self.kd_w * d_error)
-            
-            # 预测目标的横移趋势，极大提升转向“跟手感”
-            self.prev_error_w = error_w
-            
-            # 为了防止在打大方向时车速过快冲出去，限制转弯时的线速度
-            if F_total_x > 0:
-                # 角度越大，线速度打折越多
-                v = self.max_v * max(0.2, (1.0 - abs(error_w)/math.pi)) 
-            else:
-                v = 0.0
+        # 1. 转向优先级逻辑：如果角度偏差大于 30 度 (约 0.5 rad)，大幅削减线速度
+        if abs(error_w) > 0.5:
+            v_scale = 0.2  # 几乎原地转
         else:
-            v, w = 0.0, 0.0
+            v_scale = 1.0  # 正常行驶
+            
+        v = self.max_v * v_scale * max(0.0, (1.0 - abs(error_w)/math.pi))
+        d_error = error_w - self.prev_error_w
+        
+        # 2. 更加激进的 PD 转向 (增加微分项抗过冲)
+        w = (self.kp_w * error_w) + (self.kd_w * d_error)
+        
+        # 预测目标的横移趋势，极大提升转向“跟手感”
+        self.prev_error_w = error_w
+        
+        # 为了防止在打大方向时车速过快冲出去，限制转弯时的线速度
+        if F_total_x > 0:
+            # 角度越大，线速度打折越多
+            v = self.max_v * max(0.2, (1.0 - abs(error_w)/math.pi)) 
+        else:
+            v = 0.0
+
+        if dist_target < 0.2:
+            v *= (dist_target / 0.2)  # 接近目标时线速度衰减，防止过冲
 
         force_info = {
             'F_att'   : (F_att_x,   F_att_y),
