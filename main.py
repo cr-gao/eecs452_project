@@ -259,7 +259,7 @@ def main():
             tgt_gy = sim_y + tgt_x*math.sin(sim_theta) + tgt_y*math.cos(sim_theta)
  
             # ── E. 可视化更新 ──
-            '''
+            
             draw_local_frame(ax_local, tgt_x, tgt_y, force_info,
                              sonar_dl, sonar_dm, sonar_dr,
                              config['apf']['safe_radius'])
@@ -278,7 +278,7 @@ def main():
                 f"F_tot({ft[0]:.2f},{ft[1]:.2f}) | "
                 f"v={v:.2f} w={w:.2f}"
             )
-            '''
+            
  
             # ── G. 频率控制 ~10Hz ──
             time.sleep(max(DT - (time.time() - loop_start), 0))
