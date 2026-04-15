@@ -192,7 +192,7 @@ def main():
     print("=" * 50)
  
     config = load_config()
-    STOP_THRESHOLD = 0.3
+    STOP_THRESHOLD = 0.5
     DT = 0.1
  
     # ── 初始化模块 ──
