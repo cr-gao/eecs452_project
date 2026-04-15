@@ -11,6 +11,13 @@ class APFPlanner:
         self.vortex_weight = config['apf']['vortex_weight']
         self.kp_w = config['apf']['kp_w']
 
+        # [新增] PD 控制与抢救逻辑所需的状态变量
+        self.kd_w = config['apf'].get('kd_w', 1.5)
+        self.prev_error_w = 0.0
+        self.prev_dist_target = 2.0
+        self.rescue_turning = False
+        self.rescue_frames = 0
+
     def compute_command(self, uwb_dl, uwb_dr, sonar_dl, sonar_dm, sonar_dr):
         """
         Input sensor data and output velocity commands + force breakdown for visualization.
@@ -74,9 +81,38 @@ class APFPlanner:
         F_total_y = F_att_y + F_local_y
 
         # --- 4. Velocity commands ---
-        if dist_target > 0.2:
-            w = self.kp_w * math.atan2(F_total_y, F_total_x)
-            v = self.max_v if F_total_x > 0 else 0.0
+        # 抢救逻辑触发判断：
+        # 如果人之前离车很近 (< 0.6m)，并且距离突然开始变大(>0.1m)，
+        # 极大概率是人由于车身延迟已经走到了小车后方（陷入镜像死区）
+        if dist_target > self.prev_dist_target + 0.1 and self.prev_dist_target < 0.6:
+            self.rescue_turning = True
+            self.rescue_frames = 10  # 强制掉头状态持续 10 帧 (约 1 秒)
+
+        self.prev_dist_target = dist_target
+
+        if self.rescue_turning:
+            # 执行抢救：停住平移，强制大角度原地甩头找人
+            v = 0.0
+            w = 2.0  # 向左猛打方向盘（根据你基站习惯可改为负数）
+            self.rescue_frames -= 1
+            if self.rescue_frames <= 0:
+                self.rescue_turning = False
+        
+        elif dist_target > 0.2:
+            # 正常跟随：引入 PD 转向控制对抗通讯延迟
+            error_w = math.atan2(F_total_y, F_total_x)
+            d_error = error_w - self.prev_error_w
+            
+            # 预测目标的横移趋势，极大提升转向“跟手感”
+            w = (self.kp_w * error_w) + (self.kd_w * d_error)
+            self.prev_error_w = error_w
+            
+            # 为了防止在打大方向时车速过快冲出去，限制转弯时的线速度
+            if F_total_x > 0:
+                # 角度越大，线速度打折越多
+                v = self.max_v * max(0.2, (1.0 - abs(error_w)/math.pi)) 
+            else:
+                v = 0.0
         else:
             v, w = 0.0, 0.0
 

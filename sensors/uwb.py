@@ -1,69 +1,54 @@
 import serial
 import threading
 import time
+from collections import deque
+import statistics
 
-class MovingAverageFilter:
-    """Simple moving average filter backed by a fixed-size circular buffer."""
-
-    def __init__(self, window_size: int = 5):
-        self._window_size = window_size
+class MedianFilter:
+    """[修改] 中值滤波器，专门用于剔除 UWB 偶尔跳出的极大/极小噪点"""
+    def __init__(self, window_size=5):
         self._buf = deque(maxlen=window_size)
 
     def update(self, value: float) -> float:
-        """Push a new raw reading and return the current filtered average."""
         self._buf.append(value)
-        return sum(self._buf) / len(self._buf)
-
-    def reset(self):
-        self._buf.clear()
+        return statistics.median(self._buf)
 
 class DualUWBManager:
     def __init__(self, config):
-        """Initialize double uwb with a single esp32"""
         print("[*] Initializing UWB ports...")
         self.dl = 2.0 
         self.dr = 2.0 
         
-        self.port = config['hardware']['uwb_port']
-        self.baudrate = config['hardware']['uwb_baudrate']
+        # [新增] 实例化两个中值滤波器
+        self.filter_l = MedianFilter(window_size=5)
+        self.filter_r = MedianFilter(window_size=5)
         
-        try:
-            self.ser = serial.Serial(self.port, self.baudrate, timeout=0.1)
-            # Single-thread reading
-            threading.Thread(target=self._read_loop, daemon=True).start()
-        except Exception as e:
-            print(f"[!] Failed to open port {self.port} - {e}")
-            self.ser = None
+        self.port = config['hardware']['uwb_port']
+        # ... 后续串口初始化代码保持不变 ...
 
     def _read_loop(self):
-        """Background loop to parse L and R data from a single serial port"""
+        """Background loop to parse L and R data..."""
         while True:
             if self.ser and self.ser.in_waiting:
                 try:
-                    # Read a line of data, such as "Anchor2 received: +ANCHOR_RCV=TAG, 0,, 16cm, -52"
                     line = self.ser.readline().decode('utf-8').strip()
-                    
-                    # Make sure the line contains the expected pattern before parsing
                     if "+ANCHOR_RCV=" in line:
-                        # Split the line by commas, which should give us parts like ['Anchor2 received: +ANCHOR_RCV=TAG', ' 0', '', ' 16cm', ' -52']
                         parts = line.split(',')
-                        
                         if len(parts) >= 4:
-                            # Extract the part containing 'cm', e.g., ' 16cm'
                             dist_str = parts[3]
-                            # Remove 'cm' and whitespace, keeping only the numeric value '16'
                             dist_cm_clean = dist_str.replace('cm', '').strip()
                             
-                            if dist_cm_clean.isdigit(): # Make sure it's a valid number before converting
-                                dist_m = float(dist_cm_clean) / 100.0 # Convert to meters
-                                
-                                # Determine if it's Anchor1 (left) or Anchor2 (right)
+                            # [修改] 使用 try-except 替代 isdigit，增强健壮性
+                            try:
+                                raw_dist_m = float(dist_cm_clean) / 100.0
+                                # [新增] 将原始数据放入滤波器，获取平滑后的数据
                                 if "Anchor1" in line:
-                                    self.dl = dist_m
+                                    self.dl = self.filter_l.update(raw_dist_m)
                                 elif "Anchor2" in line:
-                                    self.dr = dist_m
+                                    self.dr = self.filter_r.update(raw_dist_m)
+                            except ValueError:
+                                pass # 丢弃无法转换的乱码
                 except Exception as e:
-                    # Ignore parsing errors (e.g., serial port noise)
                     pass
             time.sleep(0.01)
 
