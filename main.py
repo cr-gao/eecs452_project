@@ -205,7 +205,7 @@ def main():
     sim_x, sim_y, sim_theta = 0.0, 0.0, 0.0
     path_x, path_y = [0.0], [0.0]
     PATH_MAX = 300
- 
+    '''
     # ── 建立 matplotlib 窗口 ──
     plt.style.use('dark_background')
     fig, (ax_local, ax_global) = plt.subplots(1, 2, figsize=(14, 6))
@@ -215,7 +215,7 @@ def main():
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.ion()
     plt.show()
- 
+    '''
     print("\n[*] Entering main control loop... (Ctrl+C to exit)\n")
  
     try:
@@ -245,7 +245,7 @@ def main():
                 print(f"[Obstacle] min_dist={min_dist:.2f}m — rotating in place, w={w:.2f}")
             else:
                 chassis.send_cmd_vel(v, w)
- 
+            '''
             # ── D. 仿真位姿积分 ──
             sim_theta += w * DT
             sim_x     += v * math.cos(sim_theta) * DT
@@ -279,7 +279,7 @@ def main():
                 f"F_tot({ft[0]:.2f},{ft[1]:.2f}) | "
                 f"v={v:.2f} w={w:.2f}"
             )
-            
+            '''            
  
             # ── G. 频率控制 ~10Hz ──
             time.sleep(max(DT - (time.time() - loop_start), 0))
