@@ -42,8 +42,9 @@ class APFPlanner:
 
         if sonar_dm < self.safe_radius:
             rep_mag = self.k_rep * (1.0/sonar_dm - 1.0/self.safe_radius) / (sonar_dm**2)
-            F_rep_m = (-rep_mag, 0.0)
-            F_local_x -= rep_mag
+            # 增加一个侧向的涡旋力，迫使小车向某一侧转弯 (比如向右)
+            F_rep_m = (-rep_mag, rep_mag * self.vortex_weight) 
+            F_local_x -= rep_mag; F_local_y += rep_mag * self.vortex_weight  # 打破平衡！
 
         if sonar_dr < self.safe_radius:
             rep_mag = self.k_rep * (1.0/sonar_dr - 1.0/self.safe_radius) / (sonar_dr**2)
@@ -53,6 +54,10 @@ class APFPlanner:
             F_local_x += fx; F_local_y += fy
 
         # --- 2. Target position (robot-local frame) from UWB geometry ---
+        # 在计算 target_y 之前加入限幅
+        diff = uwb_dr - uwb_dl
+        diff = max(min(diff, self.L * 0.99), -self.L * 0.99) # 留一点余量防止除零或负数
+        uwb_dr = uwb_dl + diff
         target_y = (uwb_dr**2 - uwb_dl**2) / (2 * self.L)
         val_for_sqrt = uwb_dl**2 - (target_y - self.L/2)**2
         target_x = math.sqrt(max(val_for_sqrt, 0.001))
