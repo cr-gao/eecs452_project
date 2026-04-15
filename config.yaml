@@ -21,4 +21,4 @@ hardware:
   sonar_mid_echo: 21
   sonar_right_trig: 17
   sonar_right_echo: 27
-  sonar_moving_avg_window: 5
+  sonar_moving_avg_window: 10

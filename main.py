@@ -230,7 +230,7 @@ def main():
             min_dist = min(sonar_dl, sonar_dm, sonar_dr, uwb_dl, uwb_dr)
             if min_dist <= STOP_THRESHOLD:
                 print(f"[Emergency stop] min_dist={min_dist:.2f}m")
-                chassis.send_cmd_vel(0, 0)
+                chassis.stop_all()
                 time.sleep(max(DT - (time.time() - loop_start), 0))
                 continue
  
