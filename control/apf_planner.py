@@ -52,17 +52,17 @@ class APFPlanner:
         F_rep_x = 0.0
         F_rep_y = 0.0
 
-        # 左超声波
+        # 左超声波 (不仅往右推，还给一个向前的引导力)
         if sonar_dl < self.safe_radius:
             rep_mag = self.k_rep * (1.0/sonar_dl - 1.0/self.safe_radius) / (sonar_dl**2)
-            F_rep_x -= rep_mag
-            F_rep_y -= rep_mag * self.vortex_weight # 左边有障碍，往右推 (-Y)
+            F_rep_x += rep_mag * 0.5  # [新增] 侧向障碍也给一点前向推力，防止卡死
+            F_rep_y -= rep_mag * (self.vortex_weight + 0.2) # 加大涡旋权重
 
         # 右超声波
         if sonar_dr < self.safe_radius:
             rep_mag = self.k_rep * (1.0/sonar_dr - 1.0/self.safe_radius) / (sonar_dr**2)
-            F_rep_x -= rep_mag
-            F_rep_y += rep_mag * self.vortex_weight # 右边有障碍，往左推 (+Y)
+            F_rep_x += rep_mag * 0.5  # [新增] 同理
+            F_rep_y += rep_mag * (self.vortex_weight + 0.2)
 
         # 中间超声波 (结合 target_y 实现智能分流！)
         if sonar_dm < self.safe_radius:
@@ -97,10 +97,20 @@ class APFPlanner:
         elif dist_target > 0.2:
             # 正常跟随：引入 PD 转向控制对抗通讯延迟
             error_w = math.atan2(F_total_y, F_total_x)
+    
+            # 1. 转向优先级逻辑：如果角度偏差大于 30 度 (约 0.5 rad)，大幅削减线速度
+            if abs(error_w) > 0.5:
+                v_scale = 0.1  # 几乎原地转
+            else:
+                v_scale = 1.0  # 正常行驶
+                
+            v = self.max_v * v_scale * max(0.0, (1.0 - abs(error_w)/math.pi))
             d_error = error_w - self.prev_error_w
             
-            # 预测目标的横移趋势，极大提升转向“跟手感”
+            # 2. 更加激进的 PD 转向 (增加微分项抗过冲)
             w = (self.kp_w * error_w) + (self.kd_w * d_error)
+            
+            # 预测目标的横移趋势，极大提升转向“跟手感”
             self.prev_error_w = error_w
             
             # 为了防止在打大方向时车速过快冲出去，限制转弯时的线速度
