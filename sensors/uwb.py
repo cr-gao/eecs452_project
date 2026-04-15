@@ -1,6 +1,7 @@
 import serial
 import threading
 import time
+from collections import deque
 
 class MovingAverageFilter:
     """Simple moving average filter backed by a fixed-size circular buffer."""
@@ -23,6 +24,10 @@ class DualUWBManager:
         print("[*] Initializing UWB ports...")
         self.dl = 2.0 
         self.dr = 2.0 
+
+        # [新增] 创建左右两个滑动平均滤波器
+        self.filter_l = MovingAverageFilter(window_size=5)
+        self.filter_r = MovingAverageFilter(window_size=5)
         
         self.port = config['hardware']['uwb_port']
         self.baudrate = config['hardware']['uwb_baudrate']
@@ -59,9 +64,9 @@ class DualUWBManager:
                                 
                                 # Determine if it's Anchor1 (left) or Anchor2 (right)
                                 if "Anchor1" in line:
-                                    self.dl = dist_m
+                                    self.dl = self.filter_l.update(dist_m)
                                 elif "Anchor2" in line:
-                                    self.dr = dist_m
+                                    self.dr = self.filter_r.update(dist_m)
                 except Exception as e:
                     # Ignore parsing errors (e.g., serial port noise)
                     pass
