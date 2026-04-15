@@ -38,8 +38,8 @@ class MotorController:
 
         # --- Step 3: Clamping to Prevent Errors ---
         # gpiozero requires the duty cycle to be between -1.0 and +1.0, otherwise it will crash
-        pwm_left = max(min(pwm_left, self.max_physical_speed), -1.0 * self.max_physical_speed)
-        pwm_right = max(min(pwm_right, self.max_physical_speed), -1.0 * self.max_physical_speed)
+        pwm_left = max(min(pwm_left, 1.0), -1.0)
+        pwm_right = max(min(pwm_right, 1.0), -1.0)
 
         # --- Step 4: Drive L298N ---
         # Control the left motor

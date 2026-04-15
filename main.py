@@ -192,7 +192,7 @@ def main():
     print("=" * 50)
  
     config = load_config()
-    STOP_THRESHOLD = 0.5
+    STOP_THRESHOLD = 0.3
     DT = 0.1
  
     # ── 初始化模块 ──
@@ -225,23 +225,22 @@ def main():
             # ── A. 读传感器 ──
             sonar_dl, sonar_dm, sonar_dr = sonar.get_distances()
             uwb_dl, uwb_dr = uwb.get_distances()
- 
-            # ── 紧急停车 ──
-            min_dist = min(sonar_dl, sonar_dm, sonar_dr, uwb_dl, uwb_dr)
-            if(min_dist == sonar_dl or min_dist == sonar_dm or min_dist == sonar_dr):
-                print(f"[Emergency stop] min_sonar_dist={min_dist:.2f}m")
-            elif(min_dist == uwb_dl or min_dist == uwb_dr):
-                print(f"[Emergency stop] min_uwb_dist={min_dist:.2f}m")
-            if min_dist <= STOP_THRESHOLD:
-                print(f"[Emergency stop] min_dist={min_dist:.2f}m")
-                chassis.stop_all()
-                time.sleep(max(DT - (time.time() - loop_start), 0))
-                continue
- 
+
             # ── B. APF 规划（返回受力信息） ──
             v, w, tgt_x, tgt_y, force_info = planner.compute_command(
                 uwb_dl, uwb_dr, sonar_dl, sonar_dm, sonar_dr
             )
+ 
+            # ── 紧急停车 ──
+            min_dist = min(sonar_dl, sonar_dm, sonar_dr, uwb_dl, uwb_dr)
+            # ── C. 执行运动（急停时 v 强制为 0，只保留 w 原地转向） ──
+            if min_dist <= STOP_THRESHOLD:
+                # 立即停住平移，但继续用 APF 合力角度来原地转向
+                chassis.stop_all()          # 先刹车一帧，确保车身静止
+                chassis.send_cmd_vel(0, w)  # 再下发纯旋转指令
+                print(f"[Obstacle] min_dist={min_dist:.2f}m — rotating in place, w={w:.2f}")
+            else:
+                chassis.send_cmd_vel(v, w)
  
             # ── C. 执行运动 ──
             chassis.send_cmd_vel(v, w)
