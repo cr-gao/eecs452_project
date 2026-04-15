@@ -228,6 +228,10 @@ def main():
  
             # ── 紧急停车 ──
             min_dist = min(sonar_dl, sonar_dm, sonar_dr, uwb_dl, uwb_dr)
+            if(min_dist == sonar_dl or min_dist == sonar_dm or min_dist == sonar_dr):
+                print(f"[Emergency stop] min_sonar_dist={min_dist:.2f}m")
+            elif(min_dist == uwb_dl or min_dist == uwb_dr):
+                print(f"[Emergency stop] min_uwb_dist={min_dist:.2f}m")
             if min_dist <= STOP_THRESHOLD:
                 print(f"[Emergency stop] min_dist={min_dist:.2f}m")
                 chassis.stop_all()
