@@ -6,7 +6,7 @@ from collections import deque
 class MovingAverageFilter:
     """Simple moving average filter backed by a fixed-size circular buffer."""
 
-    def __init__(self, window_size: int = 10):
+    def __init__(self, window_size: int = 5):
         self._window_size = window_size
         self._buf = deque(maxlen=window_size)
 
@@ -26,8 +26,8 @@ class DualUWBManager:
         self.dr = 2.0 
 
         # [新增] 创建左右两个滑动平均滤波器
-        self.filter_l = MovingAverageFilter(window_size=10)
-        self.filter_r = MovingAverageFilter(window_size=10)
+        self.filter_l = MovingAverageFilter(window_size=5)
+        self.filter_r = MovingAverageFilter(window_size=5)
         
         self.port = config['hardware']['uwb_port']
         self.baudrate = config['hardware']['uwb_baudrate']

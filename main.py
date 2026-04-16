@@ -235,7 +235,7 @@ def main():
                 v *= 0.5  # UWB 距离过近时减速，增加稳定性
  
             # ── 独立避障逻辑 (Behavioral Obstacle Avoidance) ──
-            AVOID_THRESHOLD = 0.6  # 开始产生切向避障响应的距离阈值
+            AVOID_THRESHOLD = 0.5  # 开始产生切向避障响应的距离阈值
             AVOID_GAIN = 1.0       # 避障切向力的强度系数（可根据实车表现调整）
             
             min_dist = min(sonar_dl, sonar_dm, sonar_dr)
@@ -246,11 +246,11 @@ def main():
             if min_dist < AVOID_THRESHOLD:
                 # 1. 左侧有障碍：往右躲（负角速度）
                 if sonar_dl < AVOID_THRESHOLD:
-                    w_avoid -= AVOID_GAIN * (AVOID_THRESHOLD - sonar_dl)
+                    w_avoid += AVOID_GAIN * (AVOID_THRESHOLD - sonar_dl)
                 
                 # 2. 右侧有障碍：往左躲（正角速度）
                 if sonar_dr < AVOID_THRESHOLD:
-                    w_avoid += AVOID_GAIN * (AVOID_THRESHOLD - sonar_dr)
+                    w_avoid -= AVOID_GAIN * (AVOID_THRESHOLD - sonar_dr)
                 
                 # 3. 正前方有障碍：根据 APF 原始的转向意图(w的符号)决定往哪边绕，优先顺着目标方向
                 if sonar_dm < AVOID_THRESHOLD:
