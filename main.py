@@ -235,8 +235,7 @@ def main():
                 v *= 0.5  # UWB 距离过近时减速，增加稳定性
  
             # ── 紧急停车 ──
-            # min_dist = min(sonar_dl, sonar_dm, sonar_dr)
-            min_dist = 1.0
+            min_dist = min(sonar_dl, sonar_dm, sonar_dr)
             # ── C. 执行运动（急停时 v 强制为 0，只保留 w 原地转向） ──
             if min_dist <= STOP_THRESHOLD:
                 # 立即停住平移，但继续用 APF 合力角度来原地转向
