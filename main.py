@@ -234,16 +234,41 @@ def main():
             if min(uwb_dl, uwb_dr) < 0.5:
                 v *= 0.5  # UWB 距离过近时减速，增加稳定性
  
-            # ── 紧急停车 ──
+            # ── 独立避障逻辑 (Behavioral Obstacle Avoidance) ──
+            AVOID_THRESHOLD = 0.6  # 开始产生切向避障响应的距离阈值
+            AVOID_GAIN = 3.0       # 避障切向力的强度系数（可根据实车表现调整）
+            
             min_dist = min(sonar_dl, sonar_dm, sonar_dr)
-            # ── C. 执行运动（急停时 v 强制为 0，只保留 w 原地转向） ──
+            
+            w_avoid = 0.0  # 初始避障角速度补偿为0
+            
+            # 如果进入避障范围，计算“切向逃逸”角速度
+            if min_dist < AVOID_THRESHOLD:
+                # 1. 左侧有障碍：往右躲（负角速度）
+                if sonar_dl < AVOID_THRESHOLD:
+                    w_avoid -= AVOID_GAIN * (AVOID_THRESHOLD - sonar_dl)
+                
+                # 2. 右侧有障碍：往左躲（正角速度）
+                if sonar_dr < AVOID_THRESHOLD:
+                    w_avoid += AVOID_GAIN * (AVOID_THRESHOLD - sonar_dr)
+                
+                # 3. 正前方有障碍：根据 APF 原始的转向意图(w的符号)决定往哪边绕，优先顺着目标方向
+                if sonar_dm < AVOID_THRESHOLD:
+                    target_dir = 1.0 if w >= 0 else -1.0
+                    w_avoid += target_dir * AVOID_GAIN * (AVOID_THRESHOLD - sonar_dm)
+
+            # 将避障的切向反应叠加到 APF 的追踪意图上
+            final_w = w + w_avoid
+
+            # ── C. 执行运动 ──
             if min_dist <= STOP_THRESHOLD:
-                # 立即停住平移，但继续用 APF 合力角度来原地转向
+                # 触发极度危险距离：切断线速度 v，原地旋转自救
                 chassis.stop_all()          # 先刹车一帧，确保车身静止
-                chassis.send_cmd_vel(0, w)  # 再下发纯旋转指令
-                print(f"[Obstacle] min_dist={min_dist:.2f}m — rotating in place, w={w:.2f}")
+                chassis.send_cmd_vel(0, final_w)  # 再下发纯旋转指令
+                print(f"[Obstacle] STOP! min={min_dist:.2f}m | w={final_w:.2f} (w_base:{w:.2f}, w_avoid:{w_avoid:.2f})")
             else:
-                chassis.send_cmd_vel(v, w)
+                # 正常安全行驶，或轻微切向避障中
+                chassis.send_cmd_vel(v, final_w)
             '''
             # ── D. 仿真位姿积分 ──
             sim_theta += w * DT
