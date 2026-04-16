@@ -9,7 +9,7 @@ apf:
   k_att: 1.2          # Attraction coefficient
   k_rep: 0.8          # Repulsion coefficient
   vortex_weight: 0.6  # Vortex force weight (turning amplitude)
-  kp_w: 4.0
+  kp_w: 2.5
   kd_w: 1.5
 
 # Sensor ports and settings
