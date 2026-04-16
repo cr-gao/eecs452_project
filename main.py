@@ -236,7 +236,7 @@ def main():
  
             # ── 独立避障逻辑 (Behavioral Obstacle Avoidance) ──
             AVOID_THRESHOLD = 0.6  # 开始产生切向避障响应的距离阈值
-            AVOID_GAIN = 3.0       # 避障切向力的强度系数（可根据实车表现调整）
+            AVOID_GAIN = 1.0       # 避障切向力的强度系数（可根据实车表现调整）
             
             min_dist = min(sonar_dl, sonar_dm, sonar_dr)
             
